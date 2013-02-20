@@ -13,15 +13,15 @@ PORT = 4565;
 
 
 class Connection(Protocol):
-    def connectionMade(self):
-	log("New connection")
-        self.factory.clients.append(self)
+	def connectionMade(self):
+		log("New connection")
+		self.factory.clients.append(self)
 
-    def connectionLost(self, reason):
-	log("Lost connection")
-        self.factory.clients.remove(self)
+	def connectionLost(self, reason):
+		log("Lost connection")
+		self.factory.clients.remove(self)
 
-    def dataReceived(self, data):
+	def dataReceived(self, data):
 		data = json.loads(data)
 		user = data['user']
 		action = data['action']
@@ -68,31 +68,20 @@ class Connection(Protocol):
 			log("[{0}] [{1}] Location - {2}, {3}".format(getTime(), user, location['lat'], location['lon']))
 
 			# respond with all unit details
-                        replyDic['units'] = []
-                        for k, u in self.factory.users.iteritems():
-                                units = u.get_units()
+			replyDic['units'] = []
+			for k, u in self.factory.users.iteritems():
+				units = u.get_units()
 				for unit in units:
 					tmpDic = unit.get_details()
 					tmpDic['user'] = u.user
-                                	replyDic['units'].append(json.dumps(tmpDic))
+					replyDic['units'].append(json.dumps(tmpDic))
 			reply = json.dumps(replyDic)
 			self.transport.write(reply + '\n')
-#		elif action == "update":
-#		        user = data['user']
-#			# respond with all unit details
-#                        replyDic['units'] = []
-#                        for k, u in self.factory.users.iteritems():
-#                                units = u.get_units()
-#				for unit in units:
-#					tmpDic = unit.get_details()
-#					tmpDic['user'] = u.user
-#                                	replyDic['units'].append(json.dumps(tmpDic))
-#                        reply = json.dumps(replyDic)
-#                        self.transport.write(reply + '\n')
 		elif action == "unit.create":
 			user = data['user']
 			lat = data['lat']
 			lon = data['lon']
+			type = data['type']
 			self.factory.unit_id += 1
 			tmp_unit = Unit(self.factory.unit_id, 0)
 			tmp_unit.set_location(lat, lon)
@@ -102,20 +91,20 @@ class Connection(Protocol):
 			replyDic['id'] = self.factory.unit_id
 
 			# respond with all unit details
-                        replyDic['units'] = []
-                        for k, u in self.factory.users.iteritems():
-                                units = u.get_units()
+			replyDic['units'] = []
+			for k, u in self.factory.users.iteritems():
+				units = u.get_units()
 				for unit in units:
 					tmpDic = unit.get_details()
 					tmpDic['user'] = u.user
-                                	replyDic['units'].append(tmpDic)
+					replyDic['units'].append(tmpDic)
 
 			reply = json.dumps(replyDic)
 
 
 			# send to all connected clients
 			for client in self.factory.clients:
-                        	client.transport.write(reply + '\n')
+				client.transport.write(reply + '\n')
 
 
 			log("[{0}] [{1}] Created unit {2} - {3}, {4}".format(getTime(), user, self.factory.unit_id, lat, lon))
@@ -130,29 +119,28 @@ class Connection(Protocol):
 				replyDic['status'] = 0
 
 				reply = json.dumps(replyDic)
-		                self.transport.write(reply + '\n')
+				self.transport.write(reply + '\n')
 			else:
 				tmp_unit.set_location(lat, lon)
 
 				replyDic['status'] = 1
 
 				# respond with all unit details
-		                replyDic['units'] = []
-		                for k, u in self.factory.users.iteritems():
-		                        units = u.get_units()
+				replyDic['units'] = []
+				for k, u in self.factory.users.iteritems():
+					units = u.get_units()
 					for unit in units:
 						tmpDic = unit.get_details()
 						tmpDic['user'] = u.user
-		                        	replyDic['units'].append(tmpDic)
+						replyDic['units'].append(tmpDic)
 
 				reply = json.dumps(replyDic)
 
 			# send to all connected clients
 			for client in self.factory.clients:
-                        	client.transport.write(reply + '\n')
+				client.transport.write(reply + '\n')
 
-
-				log("[{0}] [{1}] Moved unit {2} - {3}, {4}".format(getTime(), user, id, lat, lon))
+			log("[{0}] [{1}] Moved unit {2} - {3}, {4}".format(getTime(), user, id, lat, lon))
 			
 
 def getTime():
