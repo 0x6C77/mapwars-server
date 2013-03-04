@@ -6,7 +6,8 @@ import web
 
 #user class
 from user import User
-from unit import Unit
+from vehicle import Vehicle
+from defence import Defence
 
 ## CONSTANTS
 PORT = 4565;
@@ -67,12 +68,12 @@ class Connection(Protocol):
 
 			log("[{0}] [{1}] Location - {2}, {3}".format(getTime(), user, location['lat'], location['lon']))
 
-			# respond with all unit details
+			# respond with all vehicle details
 			replyDic['units'] = []
 			for k, u in self.factory.users.iteritems():
-				units = u.get_units()
-				for unit in units:
-					tmpDic = unit.get_details()
+				vehicles = u.get_units()
+				for vehicle in vehicles:
+					tmpDic = vehicle.get_details()
 					tmpDic['user'] = u.user
 					replyDic['units'].append(json.dumps(tmpDic))
 			reply = json.dumps(replyDic)
@@ -81,16 +82,23 @@ class Connection(Protocol):
 			user = data['user']
 			lat = data['lat']
 			lon = data['lon']
-			type = data['type']
-			self.factory.unit_id += 1
-			tmp_unit = Unit(self.factory.unit_id, 0)
-			tmp_unit.set_location(lat, lon)
-			self.factory.users[user].add_unit(tmp_unit)
+			typ = data['type']
+
+			if (typ == 'VEHICLE'):
+				self.factory.unit_id += 1
+				tmp_vehicle = Vehicle(self.factory.unit_id, typ)
+				tmp_vehicle.set_location(lat, lon)
+				self.factory.users[user].add_unit(tmp_vehicle)
+			elif (typ == 'DEFENCE'):
+				self.factory.unit_id += 1
+				tmp_defence = Defence(self.factory.unit_id, typ)
+				tmp_defence.set_location(lat, lon)
+				self.factory.users[user].add_unit(tmp_defence)
 
 			replyDic['status'] = 1
 			replyDic['id'] = self.factory.unit_id
 
-			# respond with all unit details
+			# respond with all vehicle details
 			replyDic['units'] = []
 			for k, u in self.factory.users.iteritems():
 				units = u.get_units()
@@ -107,30 +115,30 @@ class Connection(Protocol):
 				client.transport.write(reply + '\n')
 
 
-			log("[{0}] [{1}] Created unit {2} - {3}, {4}".format(getTime(), user, self.factory.unit_id, lat, lon))
+			log("[{0}] [{1}] Created {2} {3} - {4}, {5}".format(getTime(), user, typ, self.factory.unit_id, lat, lon))
 		elif action == "unit.move":
 			user = data['user']
 			id = data['id']
 			lat = data['lat']
 			lon = data['lon']
 
-			tmp_unit = self.factory.users[user].get_unit(id)
-			if tmp_unit == 0:
+			tmp_vehicle = self.factory.users[user].get_unit(id)
+			if tmp_vehicle == 0:
 				replyDic['status'] = 0
 
 				reply = json.dumps(replyDic)
 				self.transport.write(reply + '\n')
 			else:
-				tmp_unit.set_location(lat, lon)
+				tmp_vehicle.set_location(lat, lon)
 
 				replyDic['status'] = 1
 
-				# respond with all unit details
+				# respond with all vehicle details
 				replyDic['units'] = []
 				for k, u in self.factory.users.iteritems():
-					units = u.get_units()
-					for unit in units:
-						tmpDic = unit.get_details()
+					vehicles = u.get_units()
+					for vehicle in vehicles:
+						tmpDic = vehicle.get_details()
 						tmpDic['user'] = u.user
 						replyDic['units'].append(tmpDic)
 
@@ -140,7 +148,7 @@ class Connection(Protocol):
 			for client in self.factory.clients:
 				client.transport.write(reply + '\n')
 
-			log("[{0}] [{1}] Moved unit {2} - {3}, {4}".format(getTime(), user, id, lat, lon))
+			log("[{0}] [{1}] Moved vehicle {2} - {3}, {4}".format(getTime(), user, id, lat, lon))
 			
 
 def getTime():
