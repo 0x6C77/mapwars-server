@@ -8,6 +8,7 @@ import sqlite3 as lite
 
 #user class
 from user import User
+from geo import Geo
 
 ## CONSTANTS
 PORT = 4565;
@@ -103,8 +104,8 @@ class Server(Protocol):
 		elif action == "user.location":
 			# store location
 			location = dict()
-			location['lat'] = data['lat']
-			location['lon'] = data['lon']
+			location['lat'] = float(data['lat'])
+			location['lon'] = float(data['lon'])
 
 			user.set_location(location['lat'], location['lon'])
 
@@ -113,7 +114,7 @@ class Server(Protocol):
 			replyDic['status'] = 1
 
 			# respond with all vehicle details
-			replyDic['units'] = self.getUnitList()
+			replyDic['units'] = self.getUnitList(user.get_location())
 
 			reply = json.dumps(replyDic)
 			self.transport.write(reply + '\n')
@@ -136,7 +137,7 @@ class Server(Protocol):
 			replyDic['unitID'] = unitID
 
 			# respond with all units details
-			replyDic['units'] = self.getUnitList()
+			replyDic['units'] = self.getUnitList(user.get_location())
 
 			reply = json.dumps(replyDic)
 
@@ -167,7 +168,7 @@ class Server(Protocol):
 			sql.commit()
 
 			replyDic['status'] = 1
-			replyDic['units'] = self.getUnitList()
+			replyDic['units'] = self.getUnitList(user.get_location())
 			reply = json.dumps(replyDic)
 
 			# send to all connected clients
@@ -176,10 +177,12 @@ class Server(Protocol):
 
 			log("[{0}] [{1}] Moved vehicle {2} - {3}, {4}".format(getTime(), userID, unitID, lat, lon))
 	
-	def getUnitList(self):
+	def getUnitList(self, location):
 		reply = []
 
-		db.execute("SELECT * FROM units")
+		bBox = geo.boundingBox(location, 25)
+
+		db.execute("SELECT * FROM units WHERE lat > ? AND lat < ? AND lon > ? AND lon < ?", (bBox['latMin'], bBox['latMax'], bBox['lonMin'], bBox['latMax']))
 		data = db.fetchall()
 
 		for unit in data:
@@ -221,4 +224,6 @@ def main():
 	reactor.run()
 
 if __name__ == '__main__':
+	global geo
+	geo = Geo()
 	main();

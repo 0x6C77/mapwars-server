@@ -11,6 +11,9 @@ class User:
 		self.lat = lat
 		self.lon = lon
 
+	def get_location(self):
+		return dict(lat=self.lat, lon=self.lon)
+
 	def add_unit(self, unit):
 		self.units.append(unit)
 
