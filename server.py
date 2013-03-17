@@ -3,17 +3,27 @@ from twisted.internet import reactor
 import json
 import time
 import web
+import uuid
+import sqlite3 as lite
 
 #user class
 from user import User
-from vehicle import Vehicle
-from defence import Defence
 
 ## CONSTANTS
 PORT = 4565;
 
 
-class Connection(Protocol):
+
+class Server(Protocol):
+	global db, sql
+	sql = lite.connect('db.sqlite')
+	db = sql.cursor()
+	# change results to dicts
+	db.row_factory = lite.Row
+
+	def __init__(self, factory):
+		self.factory = factory
+
 	def connectionMade(self):
 		log("New connection")
 		self.factory.clients.append(self)
@@ -23,89 +33,110 @@ class Connection(Protocol):
 		self.factory.clients.remove(self)
 
 	def dataReceived(self, data):
-		data = json.loads(data)
-		user = data['user']
+		try:
+			data = json.loads(data)
+		except ValueError:
+			replyDic['status'] = 0
+			reply = json.dumps(replyDic)
+			self.transport.write(reply + '\n')
+			return
+
 		action = data['action']
 		replyDic = dict(action=action)
 
 		#check if user is logged in or attempting to login
-		if action != "login" and user not in self.factory.users:
-			replyDic['response'] = 0
-			reply = json.dumps(replyDic)
-			self.transport.write(reply + '\n')
-			return			
+		if action != "user.login" and action != "user.register":
+			userID = data['userID']
+			sess = data['sess']
+			#lookup session id
+			if userID not in self.factory.users or self.factory.users[userID].sess != sess:
+				replyDic['status'] = 0
+				replyDic['response'] = 'Invalid session'
+				reply = json.dumps(replyDic)
+				self.transport.write(reply + '\n')
+				return
 
-		if action == "login":
-			replyDic['user'] = user
-			if data['pass'] == "pass":
+			#get user object
+			user = self.factory.users[userID]
+
+		if action == "user.login":
+			user = data['user']
+			password = data['pass']
+
+			db.execute("SELECT user_id FROM users WHERE username = ? AND password = ?", (user,password))
+			data = db.fetchone()
+
+			if data is not None:
+				userID = data['user_id']
+				replyDic['userID'] = userID
 
 				# check if user object exists
-				if user not in self.factory.users:
-					# create user
-					self.factory.id += 1
+				if userID not in self.factory.users:
+					tmp = User(userID, user)
+					self.factory.users[userID] = tmp
 
-					tmp = User(self.factory.id, user)
-					self.factory.users[user] = tmp
+				#update record
+				replyDic['sess'] = str(uuid.uuid4())
+				self.factory.users[userID].sess = replyDic['sess']
 
-				# create json reply
-				replyDic['response'] = 1
+				replyDic['status'] = 1
 				reply = json.dumps(replyDic)
 				self.transport.write(reply + '\n')
 				log("[{0}] [{1}] Login".format(getTime(), user))
 			else:
-				replyDic['response'] = 0
+				replyDic['status'] = 0
 				reply = json.dumps(replyDic)
 				self.transport.write(reply + '\n')
-		elif action == "location":
+		elif action == "user.register":
+			user = data['user']
+			password = data['pass']
+			email = data['email']
+			try:
+				db.execute("INSERT INTO users (username, password, email) VALUES (?,?,?)", (user,password,email))
+				sql.commit()
+				replyDic['status'] = 1
+			except lite.Error, e:
+				replyDic['status'] = 0
+
+			reply = json.dumps(replyDic)
+			self.transport.write(reply + '\n')
+		elif action == "user.location":
 			# store location
 			location = dict()
 			location['lat'] = data['lat']
 			location['lon'] = data['lon']
-			user = data['user']
-			self.factory.locations[user] = location
 
-			self.factory.users[user].set_location(location['lat'], location['lon'])
+			user.set_location(location['lat'], location['lon'])
 
-			log("[{0}] [{1}] Location - {2}, {3}".format(getTime(), user, location['lat'], location['lon']))
+			log("[{0}] [{1}] Location - {2}, {3}".format(getTime(), user.user, location['lat'], location['lon']))
+
+			replyDic['status'] = 1
 
 			# respond with all vehicle details
-			replyDic['units'] = []
-			for k, u in self.factory.users.iteritems():
-				vehicles = u.get_units()
-				for vehicle in vehicles:
-					tmpDic = vehicle.get_details()
-					tmpDic['user'] = u.user
-					replyDic['units'].append(json.dumps(tmpDic))
+			replyDic['units'] = self.getUnitList()
+
 			reply = json.dumps(replyDic)
 			self.transport.write(reply + '\n')
 		elif action == "unit.create":
-			user = data['user']
 			lat = data['lat']
 			lon = data['lon']
 			typ = data['type']
 
-			if (typ == 'VEHICLE'):
-				self.factory.unit_id += 1
-				tmp_vehicle = Vehicle(self.factory.unit_id, typ)
-				tmp_vehicle.set_location(lat, lon)
-				self.factory.users[user].add_unit(tmp_vehicle)
-			elif (typ == 'DEFENCE'):
-				self.factory.unit_id += 1
-				tmp_defence = Defence(self.factory.unit_id, typ)
-				tmp_defence.set_location(lat, lon)
-				self.factory.users[user].add_unit(tmp_defence)
+			#insert unit into DB and get unit id
+			try:
+				db.execute("INSERT INTO units (user_id, type, lat, lon) VALUES (?,?,?,?)", (userID,typ,lat,lon))
+				sql.commit()
+				unitID = db.lastrowid
+			except lite.Error, e:
+				replyDic['status'] = 0	
+				client.transport.write(reply + '\n')
+				return
 
 			replyDic['status'] = 1
-			replyDic['id'] = self.factory.unit_id
+			replyDic['unitID'] = unitID
 
-			# respond with all vehicle details
-			replyDic['units'] = []
-			for k, u in self.factory.users.iteritems():
-				units = u.get_units()
-				for unit in units:
-					tmpDic = unit.get_details()
-					tmpDic['user'] = u.user
-					replyDic['units'].append(tmpDic)
+			# respond with all units details
+			replyDic['units'] = self.getUnitList()
 
 			reply = json.dumps(replyDic)
 
@@ -115,41 +146,65 @@ class Connection(Protocol):
 				client.transport.write(reply + '\n')
 
 
-			log("[{0}] [{1}] Created {2} {3} - {4}, {5}".format(getTime(), user, typ, self.factory.unit_id, lat, lon))
+			log("[{0}] [{1}] Created {2} {3} - {4}, {5}".format(getTime(), userID, typ, unitID, lat, lon))
 		elif action == "unit.move":
-			user = data['user']
-			id = data['id']
+			unitID = data['id']
 			lat = data['lat']
 			lon = data['lon']
 
-			tmp_vehicle = self.factory.users[user].get_unit(id)
-			if tmp_vehicle == 0:
-				replyDic['status'] = 0
+			db.execute("SELECT unit_id FROM units WHERE unit_id = ? AND user_id = ?", (unitID,userID))
+			res = db.fetchone()
+			print res
 
+			if res is None:
+				replyDic['status'] = 0
 				reply = json.dumps(replyDic)
 				self.transport.write(reply + '\n')
-			else:
-				tmp_vehicle.set_location(lat, lon)
+				return
 
-				replyDic['status'] = 1
+			# update db
+			db.execute("UPDATE units SET lat = ?, lon = ? WHERE unit_id = ? AND user_id = ?", (lat, lon, unitID, userID))
+			sql.commit()
 
-				# respond with all vehicle details
-				replyDic['units'] = []
-				for k, u in self.factory.users.iteritems():
-					vehicles = u.get_units()
-					for vehicle in vehicles:
-						tmpDic = vehicle.get_details()
-						tmpDic['user'] = u.user
-						replyDic['units'].append(tmpDic)
-
-				reply = json.dumps(replyDic)
+			replyDic['status'] = 1
+			replyDic['units'] = self.getUnitList()
+			reply = json.dumps(replyDic)
 
 			# send to all connected clients
 			for client in self.factory.clients:
 				client.transport.write(reply + '\n')
 
-			log("[{0}] [{1}] Moved vehicle {2} - {3}, {4}".format(getTime(), user, id, lat, lon))
-			
+			log("[{0}] [{1}] Moved vehicle {2} - {3}, {4}".format(getTime(), userID, unitID, lat, lon))
+	
+	def getUnitList(self):
+		reply = []
+
+		db.execute("SELECT * FROM units")
+		data = db.fetchall()
+
+		for unit in data:
+			tmpDic = dict()
+			tmpDic['unitID'] = unit['unit_id']
+			tmpDic['userID'] = unit['user_id']
+			tmpDic['type'] = unit['type']
+			tmpDic['lat'] = unit['lat']
+			tmpDic['lon'] = unit['lon']
+			tmpDic['health'] = unit['health']
+			reply.append(tmpDic)
+
+		return reply
+
+
+
+class ServerFactory(Factory):
+    def __init__(self):
+		self.clients = []
+		self.users = dict()
+		self.unit_id = 0
+
+    def buildProtocol(self, addr):
+        return Server(self)
+
 
 def getTime():
 	return time.strftime("%I:%M:%S", time.localtime())
@@ -159,16 +214,11 @@ def log(str):
 	logfile.write(str + "\n")
 	print(str)
 
-f = Factory()
-f.protocol = Connection
-f.clients = []
-f.locations = dict()
-f.users = dict()
 
-#temporary id
-f.id = 0;
-f.unit_id = 0;
+def main():
+	reactor.listenTCP(PORT, ServerFactory())
+	log("Server started, port {0}\n".format(PORT))
+	reactor.run()
 
-reactor.listenTCP(PORT, f)
-log("Server started, port {0}\n".format(PORT))
-reactor.run()
+if __name__ == '__main__':
+	main();

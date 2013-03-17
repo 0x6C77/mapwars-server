@@ -9,6 +9,10 @@ class Unit:
 		self.lat = lat
 		self.lon = lon
 
+	def set_target_location(self, lat, lon):
+		self.targetLat = lat
+		self.targetLon = lon
+
 	def get_details(self):
 		replyDic = dict(id=self.id)
 		replyDic['type'] = self.type
