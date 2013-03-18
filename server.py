@@ -9,16 +9,16 @@ import sqlite3 as lite
 #user class
 from user import User
 from geo import Geo
+from control import Control
 
 ## CONSTANTS
 PORT = 4565;
 
-
+global sql, db
+sql = lite.connect('db.sqlite')
+db = sql.cursor()
 
 class Server(Protocol):
-	global db, sql
-	sql = lite.connect('db.sqlite')
-	db = sql.cursor()
 	# change results to dicts
 	db.row_factory = lite.Row
 
@@ -125,12 +125,14 @@ class Server(Protocol):
 
 			#insert unit into DB and get unit id
 			try:
-				db.execute("INSERT INTO units (user_id, type, lat, lon) VALUES (?,?,?,?)", (userID,typ,lat,lon))
+				db.execute("INSERT INTO units (user_id, type, lat, lon, target_lat, target_lon, health) VALUES (?,?,?,?,?,?,?)", (userID,typ,lat,lon,lat,lon,100))
 				sql.commit()
 				unitID = db.lastrowid
 			except lite.Error, e:
+				print e
 				replyDic['status'] = 0	
-				client.transport.write(reply + '\n')
+				reply = json.dumps(replyDic)
+				self.transport.write(reply + '\n')
 				return
 
 			replyDic['status'] = 1
@@ -155,7 +157,6 @@ class Server(Protocol):
 
 			db.execute("SELECT unit_id FROM units WHERE unit_id = ? AND user_id = ?", (unitID,userID))
 			res = db.fetchone()
-			print res
 
 			if res is None:
 				replyDic['status'] = 0
@@ -164,7 +165,7 @@ class Server(Protocol):
 				return
 
 			# update db
-			db.execute("UPDATE units SET lat = ?, lon = ? WHERE unit_id = ? AND user_id = ?", (lat, lon, unitID, userID))
+			db.execute("UPDATE units SET target_lat = ?, target_lon = ? WHERE unit_id = ? AND user_id = ?", (lat, lon, unitID, userID))
 			sql.commit()
 
 			replyDic['status'] = 1
@@ -180,7 +181,7 @@ class Server(Protocol):
 	def getUnitList(self, location):
 		reply = []
 
-		bBox = geo.boundingBox(location, 25)
+		bBox = Geo.boundingBox(location, 25)
 
 		db.execute("SELECT * FROM units WHERE lat > ? AND lat < ? AND lon > ? AND lon < ?", (bBox['latMin'], bBox['latMax'], bBox['lonMin'], bBox['latMax']))
 		data = db.fetchall()
@@ -190,10 +191,12 @@ class Server(Protocol):
 			tmpDic['unitID'] = unit['unit_id']
 			tmpDic['userID'] = unit['user_id']
 			tmpDic['type'] = unit['type']
-			tmpDic['lat'] = unit['lat']
-			tmpDic['lon'] = unit['lon']
+			tmpDic['location'] = dict(lat=unit['lat'], lon=unit['lon'])
+			tmpDic['target'] = dict(lat=unit['target_lat'], lon=unit['target_lon'])
 			tmpDic['health'] = unit['health']
 			reply.append(tmpDic)
+
+			print Geo.distance(tmpDic['location'], tmpDic['target'])
 
 		return reply
 
@@ -219,11 +222,11 @@ def log(str):
 
 
 def main():
+	t = Control()
+	t.start()
 	reactor.listenTCP(PORT, ServerFactory())
 	log("Server started, port {0}\n".format(PORT))
 	reactor.run()
 
 if __name__ == '__main__':
-	global geo
-	geo = Geo()
 	main();

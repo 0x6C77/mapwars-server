@@ -2,7 +2,8 @@ print "Loaded geo class..."
 import math
 
 class Geo:
-    def boundingBox(self, location, half_side_in_miles):
+    @staticmethod
+    def boundingBox(location, half_side_in_miles):
         half_side_in_km = half_side_in_miles * 1.609344
         lat = math.radians(location['lat'])
         lon = math.radians(location['lon'])
@@ -18,3 +19,23 @@ class Geo:
         rad2deg = math.degrees
 
         return dict(latMin=rad2deg(lat_min), lonMin=rad2deg(lon_min), latMax=rad2deg(lat_max), lonMax=rad2deg(lon_max))
+
+    # returns distance in between two loctaions
+    @staticmethod
+    def distance(location1, location2):
+        rad2deg = math.degrees
+        deg2rad = math.radians
+
+        lat1 = location1['lat']
+        lat2 = location2['lat']
+        lon1 = location1['lon']
+        lon2 = location2['lon']
+
+        theta = lon1 - lon2
+        dist = math.sin(deg2rad(lat1)) * math.sin(deg2rad(lat2)) + math.cos(deg2rad(lat1)) * math.cos(deg2rad(lat2)) * math.cos(deg2rad(theta));
+
+        dist = math.acos(dist);
+        dist = rad2deg(dist);
+        dist = dist * 60 * 1.852 * 1000;
+
+        return dist

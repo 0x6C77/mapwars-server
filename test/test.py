@@ -41,8 +41,13 @@ while True:
 				msgDic['email'] = match[3]
 			elif match[0] == 'location':
 				msgDic['action'] = "user.location"
-				msgDic['lat'] = match[1]
-				msgDic['lon'] = match[2]
+
+				if len(match) == 3:
+					msgDic['lat'] = match[1]
+					msgDic['lon'] = match[2]
+				else:
+					msgDic['lat'] = '52.35184333541474'
+					msgDic['lon'] = '-1.966477632522583'
 			elif match[0] == 'unit':
 				msgDic['action'] = "unit.create"
 				msgDic['type'] = match[1]
@@ -71,18 +76,22 @@ while True:
 
 
 	rec = sock.recv(2048)
-	data = json.loads(rec)
+	try:
+		data = json.loads(rec)
 
-	#check for session data
-	if data['action'] == 'user.login' and data['status'] == 1:
-		sess = data['sess']
-		#sess = 'cat'
-		userID = data['userID']
+		#check for session data
+		if data['action'] == 'user.login' and data['status'] == 1:
+			sess = data['sess']
+			#sess = 'cat'
+			userID = data['userID']
 
-	if data['status'] == 1:
-		print '\x1b[38;5;46m' + "R " + rec + '\033[0m'
-	else:
-		print '\x1b[38;5;160m' + "R " + rec + '\033[0m'
+		if data['status'] == 1:
+			print '\x1b[38;5;46m' + "R " + rec + '\033[0m'
+		else:
+			print '\x1b[38;5;160m' + "R " + rec + '\033[0m'
+	except ValueError:
+		print rec
+
 
 sock.close()
 
