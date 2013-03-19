@@ -3,8 +3,8 @@ import math
 
 class Geo:
     @staticmethod
-    def boundingBox(location, half_side_in_miles):
-        half_side_in_km = half_side_in_miles * 1.609344
+    def boundingBox(location, half_side_in_km):
+      #  half_side_in_km = half_side_in_miles * 1.609344
         lat = math.radians(location['lat'])
         lon = math.radians(location['lon'])
 

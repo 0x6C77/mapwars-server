@@ -182,6 +182,7 @@ class Server(Protocol):
 		reply = []
 
 		bBox = Geo.boundingBox(location, 25)
+		print bBox
 
 		db.execute("SELECT * FROM units WHERE lat > ? AND lat < ? AND lon > ? AND lon < ?", (bBox['latMin'], bBox['latMax'], bBox['lonMin'], bBox['latMax']))
 		data = db.fetchall()
@@ -195,8 +196,6 @@ class Server(Protocol):
 			tmpDic['target'] = dict(lat=unit['target_lat'], lon=unit['target_lon'])
 			tmpDic['health'] = unit['health']
 			reply.append(tmpDic)
-
-			print Geo.distance(tmpDic['location'], tmpDic['target'])
 
 		return reply
 
