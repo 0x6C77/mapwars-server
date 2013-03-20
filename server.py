@@ -51,6 +51,7 @@ class Server(Protocol):
 			sess = data['sess']
 			#lookup session id
 			if userID not in self.factory.users or self.factory.users[userID].sess != sess:
+				print "Failed: {0} {1}".format(userID, sess, self.factory.users[userID].sess)
 				replyDic['status'] = 0
 				replyDic['response'] = 'Invalid session'
 				reply = json.dumps(replyDic)
@@ -123,6 +124,18 @@ class Server(Protocol):
 			lon = data['lon']
 			typ = data['type']
 
+			#check if unit is with range
+			userLoc = user.get_location()
+			print userLoc
+			print dict(lat=lat, lon=lon)
+
+#			distance = Geo.distance(userLoc, dict(lat=lat, lon=lon))
+#			if distance > 2000:
+#				replyDic['status'] = 0
+#				reply = json.dumps(replyDic)
+#				self.transport.write(reply + '\n')
+#				return
+
 			#insert unit into DB and get unit id
 			try:
 				db.execute("INSERT INTO units (user_id, type, lat, lon, target_lat, target_lon, health) VALUES (?,?,?,?,?,?,?)", (userID,typ,lat,lon,lat,lon,100))
@@ -155,10 +168,20 @@ class Server(Protocol):
 			lat = data['lat']
 			lon = data['lon']
 
-			db.execute("SELECT unit_id FROM units WHERE unit_id = ? AND user_id = ?", (unitID,userID))
+			db.execute("SELECT unit_id, lat, lon FROM units WHERE unit_id = ? AND user_id = ? AND health > 0", (unitID,userID))
 			res = db.fetchone()
 
 			if res is None:
+				replyDic['status'] = 0
+				reply = json.dumps(replyDic)
+				self.transport.write(reply + '\n')
+				return
+
+			#check if unit is with range
+			userLoc = user.get_location()
+			distance = Geo.distance(userLoc, dict(lat=res['lat'], lon=res['lon']))
+			print distance
+			if distance > 2000:
 				replyDic['status'] = 0
 				reply = json.dumps(replyDic)
 				self.transport.write(reply + '\n')
@@ -181,10 +204,9 @@ class Server(Protocol):
 	def getUnitList(self, location):
 		reply = []
 
-		bBox = Geo.boundingBox(location, 25)
-		print bBox
+		bBox = Geo.boundingBox(location, 2)
 
-		db.execute("SELECT * FROM units WHERE lat > ? AND lat < ? AND lon > ? AND lon < ?", (bBox['latMin'], bBox['latMax'], bBox['lonMin'], bBox['latMax']))
+		db.execute("SELECT * FROM units WHERE health > 0 AND lat > ? AND lat < ? AND lon > ? AND lon < ?", (bBox['latMin'], bBox['latMax'], bBox['lonMin'], bBox['lonMax']))
 		data = db.fetchall()
 
 		for unit in data:
