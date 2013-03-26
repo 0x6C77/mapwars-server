@@ -1,11 +1,9 @@
 print "Loaded user class..."
 
 class User:
-	def __init__(self, id, user):
+	def __init__(self, id, connection):
 		self.id = id
-		self.user = user
-		#self.units = []
-		print "{0} - {1}".format(id, user)
+		self.connection = connection
 
 	def set_location(self, lat, lon):
 		self.lat = lat
@@ -14,15 +12,8 @@ class User:
 	def get_location(self):
 		return dict(lat=self.lat, lon=self.lon)
 
-#	def add_unit(self, unit):
-#		self.units.append(unit)
+	def set_connection(self, connection):
+		self.connection = connection
 
-#	def get_units(self):
-#		return self.units
-
-#	def get_unit(self, id):
-#		for unit in self.units:
-#			if int(unit.id) == int(id):
-#				return unit			
-#
-#		return 0
+	def get_connection(self):
+		return self.connection

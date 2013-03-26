@@ -27,11 +27,9 @@ class Server(Protocol):
 
 	def connectionMade(self):
 		log("New connection")
-		self.factory.clients.append(self)
 
 	def connectionLost(self, reason):
 		log("Lost connection")
-		self.factory.clients.remove(self)
 
 	def dataReceived(self, data):
 		try:
@@ -50,8 +48,8 @@ class Server(Protocol):
 			userID = data['userID']
 			sess = data['sess']
 			#lookup session id
-			if userID not in self.factory.users or self.factory.users[userID].sess != sess:
-				print "Failed: {0} {1}".format(userID, sess, self.factory.users[userID].sess)
+			if userID not in users or users[userID].sess != sess:
+				print "Failed: {0} {1}".format(userID, sess, users[userID].sess)
 				replyDic['status'] = 0
 				replyDic['response'] = 'Invalid session'
 				reply = json.dumps(replyDic)
@@ -59,7 +57,7 @@ class Server(Protocol):
 				return
 
 			#get user object
-			user = self.factory.users[userID]
+			user = users[userID]
 
 		if action == "user.login":
 			user = data['user']
@@ -73,13 +71,16 @@ class Server(Protocol):
 				replyDic['userID'] = userID
 
 				# check if user object exists
-				if userID not in self.factory.users:
-					tmp = User(userID, user)
-					self.factory.users[userID] = tmp
+				if userID not in users:
+					tmp = User(userID, self)
+					users[userID] = tmp
+				else:
+					#update connection if user object exists
+					users[userID].set_connection(self)
 
 				#update record
 				replyDic['sess'] = str(uuid.uuid4())
-				self.factory.users[userID].sess = replyDic['sess']
+				users[userID].sess = replyDic['sess']
 
 				replyDic['status'] = 1
 				reply = json.dumps(replyDic)
@@ -110,7 +111,7 @@ class Server(Protocol):
 
 			user.set_location(location['lat'], location['lon'])
 
-			log("[{0}] [{1}] Location - {2}, {3}".format(getTime(), user.user, location['lat'], location['lon']))
+			log("[{0}] Location - {1}, {2}".format(getTime(), location['lat'], location['lon']))
 
 			replyDic['status'] = 1
 
@@ -158,8 +159,8 @@ class Server(Protocol):
 
 
 			# send to all connected clients
-			for client in self.factory.clients:
-				client.transport.write(reply + '\n')
+			for n, tmpUser in users.items():
+				tmpUser.get_connection().transport.write(reply + '\n')
 
 
 			log("[{0}] [{1}] Created {2} {3} - {4}, {5}".format(getTime(), userID, typ, unitID, lat, lon))
@@ -196,8 +197,9 @@ class Server(Protocol):
 			reply = json.dumps(replyDic)
 
 			# send to all connected clients
-			for client in self.factory.clients:
-				client.transport.write(reply + '\n')
+			for n, tmpUser in users.items():
+				tmpUser.get_connection().transport.write(reply + '\n')
+				print "sent to {0}".format(n)
 
 			log("[{0}] [{1}] Moved vehicle {2} - {3}, {4}".format(getTime(), userID, unitID, lat, lon))
 	
@@ -224,11 +226,6 @@ class Server(Protocol):
 
 
 class ServerFactory(Factory):
-    def __init__(self):
-		self.clients = []
-		self.users = dict()
-		self.unit_id = 0
-
     def buildProtocol(self, addr):
         return Server(self)
 
@@ -243,8 +240,12 @@ def log(str):
 
 
 def main():
+	global users
+	users = dict()
+
 	t = Control()
 	t.start()
+
 	reactor.listenTCP(PORT, ServerFactory())
 	log("Server started, port {0}\n".format(PORT))
 	reactor.run()
